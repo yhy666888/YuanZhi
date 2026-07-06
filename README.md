@@ -138,7 +138,7 @@ yuanzhi/
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/你的用户名/yuanzhi.git
+git clone https://github.com/yhy666888/YuanZhi.git
 cd yuanzhi
 ```
 
