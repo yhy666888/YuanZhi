@@ -2,6 +2,12 @@
 
 多平台（Web / Windows / Android）的个人日程管理软件。集番茄钟、待办事项、便签、记账、计划于一体，本地优先、离线可用，通过 WebDAV 实现多端数据同步。
 
+## 软件截图
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/438125d4-9df3-4ac2-8a33-f5615fc9909d" />
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/c349a765-1852-4feb-8a07-94386daf0497" />
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/f08d3bf9-416b-476a-8cdf-e587dd33bb38" />
+
+
 ## 功能特性
 
 ### 首页概览
