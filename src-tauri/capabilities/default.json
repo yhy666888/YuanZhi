@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "sql:default",
+    "sql:allow-execute",
+    "notification:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://devapi.qweather.com/**" },
+        { "url": "https://api.qweather.com/**" },
+        { "url": "https://geoapi.qweather.com/**" },
+        { "url": "https://*.qweatherapi.com/**" },
+        { "url": "https://api.vvhan.com/**" }
+      ]
+    }
+  ]
+}
