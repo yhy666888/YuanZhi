@@ -46,15 +46,38 @@ export const SCHEMA_STATEMENTS: string[] = [
   )`,
   `CREATE TABLE IF NOT EXISTS plans (
     id TEXT PRIMARY KEY,
-    date TEXT NOT NULL,
+    plan_type TEXT NOT NULL DEFAULT 'daily',
     title TEXT NOT NULL,
+    notes TEXT,
+    priority INTEGER NOT NULL DEFAULT 1,
+    time_type TEXT NOT NULL DEFAULT 'point',
+    date TEXT NOT NULL DEFAULT '',
     start_at TEXT,
     end_at TEXT,
     color TEXT,
+    repeat TEXT NOT NULL DEFAULT 'none',
+    repeat_interval INTEGER NOT NULL DEFAULT 1,
+    progress INTEGER NOT NULL DEFAULT 0,
+    progress_note TEXT,
+    target_period TEXT,
     done INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted INTEGER NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE IF NOT EXISTS plan_date_ranges (
+    id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS plan_checkins (
+    id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    date TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(plan_id, date)
   )`,
   `CREATE TABLE IF NOT EXISTS pomodoro_sessions (
     id TEXT PRIMARY KEY,
@@ -99,4 +122,13 @@ export const MIGRATION_STATEMENTS: string[] = [
   "ALTER TABLE memos ADD COLUMN content_md TEXT NOT NULL DEFAULT ''",
   "ALTER TABLE memos ADD COLUMN format TEXT NOT NULL DEFAULT 'rich'",
   "ALTER TABLE memos ADD COLUMN color TEXT NOT NULL DEFAULT 'yellow'",
+  "ALTER TABLE plans ADD COLUMN plan_type TEXT NOT NULL DEFAULT 'daily'",
+  "ALTER TABLE plans ADD COLUMN repeat TEXT NOT NULL DEFAULT 'none'",
+  "ALTER TABLE plans ADD COLUMN repeat_interval INTEGER NOT NULL DEFAULT 1",
+  "ALTER TABLE plans ADD COLUMN progress INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE plans ADD COLUMN progress_note TEXT",
+  "ALTER TABLE plans ADD COLUMN target_period TEXT",
+  "ALTER TABLE plans ADD COLUMN notes TEXT",
+  "ALTER TABLE plans ADD COLUMN priority INTEGER NOT NULL DEFAULT 1",
+  "ALTER TABLE plans ADD COLUMN time_type TEXT NOT NULL DEFAULT 'point'",
 ];

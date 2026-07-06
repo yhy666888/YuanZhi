@@ -22,6 +22,7 @@ import {
 } from "@/services/todos";
 import { PRIORITY_LABELS, priorityBorder, priorityDot } from "@/lib/priority";
 import { TODO_ICONS, getTodoIcon, getTodoIconLabel } from "@/lib/todo-icons";
+import { PickerInput } from "@/components/ui/picker-input";
 import { cn } from "@/lib/utils";
 import type { Todo } from "@/lib/types";
 
@@ -222,7 +223,7 @@ export function TodolistPage() {
             </label>
             <label className="block space-y-1.5">
               <span className="text-sm text-muted-foreground">时间</span>
-              <input
+              <PickerInput
                 type="datetime-local"
                 value={form.due_at}
                 onChange={(e) => setForm({ ...form, due_at: e.target.value })}

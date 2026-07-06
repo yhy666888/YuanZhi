@@ -51,13 +51,34 @@ export interface AccountCategory {
   deleted: boolean;
 }
 
+export type PlanType = "daily" | "monthly" | "yearly";
+export type RepeatType = "none" | "daily" | "weekly" | "monthly" | "yearly" | "custom";
+export type TimeType = "point" | "range";
+
+export interface PlanDateRange {
+  id: string;
+  plan_id: string;
+  start_date: string;
+  end_date: string;
+}
+
 export interface Plan {
   id: string;
-  date: string;
+  plan_type: PlanType;
   title: string;
+  notes: string | null;
+  priority: number;
+  time_type: TimeType;
+  date: string;
   start_at: string | null;
   end_at: string | null;
   color: string | null;
+  repeat: RepeatType;
+  repeat_interval: number;
+  progress: number;
+  progress_note: string | null;
+  target_period: string | null;
+  date_ranges: PlanDateRange[];
   done: boolean;
   created_at: string;
   updated_at: string;
