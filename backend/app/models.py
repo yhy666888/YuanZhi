@@ -46,4 +46,5 @@ class Plan(Base):
     priority: Mapped[str] = mapped_column(String(10), default="medium")
     notes: Mapped[str] = mapped_column(Text, default="")
     progress: Mapped[int] = mapped_column(Integer, default=0)
+    repeat_group_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

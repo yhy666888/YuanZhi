@@ -85,4 +85,70 @@ class PlanRead(PlanCreate):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    repeat_group_id: str | None = None
     created_at: datetime
+
+
+class PlanDayStat(BaseModel):
+    date: date
+    total: int
+    completed: int
+
+
+class PlanOverdueItem(BaseModel):
+    id: int
+    title: str
+    start_date: date
+    start_time: str | None = None
+    priority: str
+
+
+class PlanStats(BaseModel):
+    today_total: int = 0
+    today_completed: int = 0
+    week_total: int = 0
+    week_completed: int = 0
+    week_rate: int = 0
+    streak_days: int = 0
+    heatmap: list[PlanDayStat] = Field(default_factory=list)
+    overdue: list[PlanOverdueItem] = Field(default_factory=list)
+
+
+class TodoImport(BaseModel):
+    id: int
+    title: str
+    priority: str = "low"
+    due_at: datetime | None = None
+    completed: bool = False
+    pomodoros: int = 0
+    pomodoro_target: int = 0
+    created_at: datetime | None = None
+
+
+class PlanImport(BaseModel):
+    id: int
+    plan_type: str = Field(pattern="^(daily|monthly|yearly)$")
+    title: str
+    start_date: date
+    end_date: date
+    start_time: str | None = None
+    end_time: str | None = None
+    priority: str = "medium"
+    notes: str = ""
+    progress: int = Field(default=0, ge=0, le=100)
+    repeat_group_id: str | None = None
+    created_at: datetime | None = None
+
+
+class PomodoroImport(BaseModel):
+    id: int
+    todo_id: int | None = None
+    duration_seconds: int = 1500
+    completed_at: datetime | None = None
+
+
+class DataImport(BaseModel):
+    todos: list[TodoImport] = Field(default_factory=list)
+    plans: list[PlanImport] = Field(default_factory=list)
+    pomodoros: list[PomodoroImport] = Field(default_factory=list)
+    settings: dict[str, str] = Field(default_factory=dict)

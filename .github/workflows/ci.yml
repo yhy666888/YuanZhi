@@ -39,6 +39,9 @@ jobs:
       - name: 类型检查
         working-directory: frontend
         run: npm run check
+      - name: 前端测试
+        working-directory: frontend
+        run: npm test
       - name: 生产构建
         working-directory: frontend
         run: npm run build

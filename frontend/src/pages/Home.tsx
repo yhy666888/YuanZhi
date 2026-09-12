@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { CalendarDays, Check, CheckSquare2, Clock3, MapPin, RefreshCw, Sun } from "lucide-react";
-import { api, type Dashboard, type Plan, type Todo, type Trending, type TrendPlatform, type Weather } from "../api";
+import { api, type Dashboard, type Plan, type PlanStats, type Todo, type Trending, type TrendPlatform, type Weather } from "../api";
 import { WeatherDetailDialog } from "../components/WeatherDetailDialog";
 import { Empty, PanelTitle, PlatformBadge, Stat, TaskBinding } from "../components/Widgets";
 import { formatDue, formatTemperature, isToday, localDateKey, type Page } from "../utils";
 
-export function HomeWorkspace({ todos, plans, dashboard, weather, trending, go, refresh, refreshWeather }: { todos: Todo[]; plans: Plan[]; dashboard: Dashboard | null; weather: Weather | null; trending: Trending | null; go: (p: Page) => void; refresh: () => Promise<void>; refreshWeather: () => Promise<void> }) {
+export function HomeWorkspace({ todos, plans, dashboard, planStats, weather, trending, go, refresh, refreshWeather }: { todos: Todo[]; plans: Plan[]; dashboard: Dashboard | null; planStats: PlanStats | null; weather: Weather | null; trending: Trending | null; go: (p: Page) => void; refresh: () => Promise<void>; refreshWeather: () => Promise<void> }) {
   const [weatherOpen, setWeatherOpen] = useState(false);
   const [weatherRefreshing, setWeatherRefreshing] = useState(false);
   const [trendData, setTrendData] = useState(trending);
@@ -19,7 +19,7 @@ export function HomeWorkspace({ todos, plans, dashboard, weather, trending, go, 
   const reloadWeather = async () => { setWeatherRefreshing(true); try { await refreshWeather(); } finally { setWeatherRefreshing(false); } };
   const reloadTrending = async () => { setTrendLoading(true); try { setTrendData(await api.trending(platform, true)); } catch { setTrendData(null); } finally { setTrendLoading(false); } };
   return <div className="home-workspace">
-    <HomePage todos={todos} plans={plans} dashboard={dashboard} go={go} refresh={refresh} />
+    <HomePage todos={todos} plans={plans} dashboard={dashboard} planStats={planStats} go={go} refresh={refresh} />
     <aside className="insight-rail">
       {weather && <section className={`weather-card ${weather.temperature === null ? "weather-empty" : ""}`} onClick={() => weather.temperature !== null && setWeatherOpen(true)}>
         <div className="weather-location"><MapPin /><span>{weather.city} · {weather.condition}</span><button className={`data-refresh ${weatherRefreshing ? "refreshing" : ""}`} title="刷新天气" aria-label="刷新天气" disabled={weatherRefreshing} onClick={event => { event.stopPropagation(); void reloadWeather(); }}><RefreshCw /></button></div>
@@ -36,22 +36,37 @@ export function HomeWorkspace({ todos, plans, dashboard, weather, trending, go, 
   </div>;
 }
 
-function HomePage({ todos, plans, dashboard, go, refresh }: { todos: Todo[]; plans: Plan[]; dashboard: Dashboard | null; go: (p: Page) => void; refresh: () => Promise<void> }) {
+function HomePage({ todos, plans, dashboard, planStats, go, refresh }: { todos: Todo[]; plans: Plan[]; dashboard: Dashboard | null; planStats: PlanStats | null; go: (p: Page) => void; refresh: () => Promise<void> }) {
   const active = todos.filter(todo => !todo.completed && isToday(todo));
   const today = localDateKey();
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const dailyPlans = plans.filter(plan => plan.plan_type === "daily" && plan.start_date <= today && plan.end_date >= today);
+  const toMinutes = (value: string | null) => { if (!value) return null; const [hour, minute] = value.split(":").map(Number); return hour * 60 + minute; };
+  const planState = (plan: Plan): "done" | "now" | "overdue" | "" => {
+    if (plan.progress === 100) return "done";
+    const start = toMinutes(plan.start_time);
+    if (start === null) return "";
+    const end = toMinutes(plan.end_time) ?? start + 60;
+    if (nowMinutes >= start && nowMinutes < end) return "now";
+    if (nowMinutes >= end) return "overdue";
+    return "";
+  };
+  const timelinePlans = [...dailyPlans].sort((a, b) => (toMinutes(a.start_time) ?? 1441) - (toMinutes(b.start_time) ?? 1441));
   const completed = dashboard?.completed_todos ?? 0;
   const total = dashboard?.total_todos ?? 0;
   const progress = total ? Math.round(completed / total * 100) : 0;
+  const planDetail = !dailyPlans.length && !planStats?.today_total ? "今天没有计划"
+    : `已完成 ${planStats?.today_completed ?? 0}/${planStats?.today_total ?? dailyPlans.length}${planStats?.streak_days ? ` · 连续打卡 ${planStats.streak_days} 天` : ""}`;
   return <div className="page home-page">
     <section className="stats-grid">
       <Stat icon={<CheckSquare2 />} label="待办进度" value={<>{completed}<small>/{total}</small></>} detail={`已完成 ${progress}%`} tone="cyan" />
-      <Stat icon={<CalendarDays />} label="今日计划" value={<>{dailyPlans.length}<small> 项计划</small></>} detail={dailyPlans[0]?.title || "今天没有计划"} tone="blue" />
+      <Stat icon={<CalendarDays />} label="今日计划" value={<>{planStats?.today_completed ?? 0}<small>/{planStats?.today_total ?? dailyPlans.length}</small></>} detail={planDetail} tone="blue" />
       <Stat icon={<Clock3 />} label="今日专注" value={<>{Math.floor((dashboard?.focus_minutes_today ?? 0) / 60)}<small>h {(dashboard?.focus_minutes_today ?? 0) % 60}m</small></>} detail={`完成 ${dashboard?.pomodoros_today ?? 0} 个番茄`} tone="violet" />
     </section>
     <section className="home-grid">
       <div className="panel home-timer"><PanelTitle title="番茄钟" action="进入专注" onAction={() => go("pomodoro")} /><div className="mini-ring"><div><strong>25:00</strong><span>准备开始</span></div></div>{active[0] ? <TaskBinding todo={active[0]} /> : <Empty compact text="先创建一项待办" />}</div>
-      <div className="panel timeline"><PanelTitle title="今日计划" action="查看计划" onAction={() => go("plan")} />{dailyPlans.slice(0, 5).map(plan => <div className="timeline-item" key={plan.id}><time>{plan.start_time || "全天"}</time><span className={`timeline-dot ${plan.priority}`} /><div><strong>{plan.title}</strong><small>{plan.end_time ? `${plan.start_time} - ${plan.end_time}` : "时间待定"} · {plan.progress === 100 ? "已完成" : "待完成"}</small></div></div>)}{!dailyPlans.length && <Empty text="今天还没有计划" />}</div>
+      <div className="panel timeline"><PanelTitle title="今日计划" action="查看计划" onAction={() => go("plan")} />{timelinePlans.slice(0, 6).map(plan => { const state = planState(plan); return <div className={`timeline-item ${plan.progress === 100 ? "is-done" : state}`} key={plan.id}><time>{plan.start_time || "全天"}</time><span className={`timeline-dot ${plan.priority}`} /><div><strong>{plan.title}{state === "now" && <em className="timeline-badge now">现在</em>}{state === "overdue" && <em className="timeline-badge overdue">已过期</em>}</strong><small>{plan.end_time ? `${plan.start_time} - ${plan.end_time}` : "时间待定"} · {plan.progress === 100 ? "已完成" : state === "overdue" ? "未完成" : "待完成"}</small></div></div>; })}{!dailyPlans.length && <Empty text="今天还没有计划" />}{dailyPlans.length > 0 && planStats && <div className="timeline-summary">{planStats.today_completed}/{planStats.today_total} 已完成{planStats.streak_days > 0 ? `，已连续全勤 ${planStats.streak_days} 天` : ""}</div>}</div>
     </section>
     <HomeTodayTodos todos={todos} refresh={refresh} />
   </div>;

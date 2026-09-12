@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from datetime import datetime
+from uuid import uuid4
 
 from sqlalchemy import Engine, inspect, text
 
@@ -38,9 +39,37 @@ def shift_todo_created_at_to_local_time(engine: Engine):
         )
 
 
+def assign_plan_repeat_groups(engine: Engine):
+    """v3 为计划引入重复系列标识，历史数据中内容一致的每日计划归入同一系列。"""
+    inspector = inspect(engine)
+    if "plans" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("plans")}
+    with engine.begin() as connection:
+        if "repeat_group_id" not in columns:
+            connection.execute(text("ALTER TABLE plans ADD COLUMN repeat_group_id VARCHAR(36)"))
+        rows = connection.execute(
+            text("SELECT id, plan_type, title, start_time, end_time, priority FROM plans WHERE repeat_group_id IS NULL")
+        ).mappings().fetchall()
+        series: dict[tuple, list[int]] = {}
+        for row in rows:
+            if row["plan_type"] == "daily":
+                key = (row["title"], row["start_time"], row["end_time"], row["priority"])
+                series.setdefault(key, []).append(row["id"])
+        shared = {key: uuid4().hex for key, ids in series.items() if len(ids) >= 2}
+        for row in rows:
+            key = (row["title"], row["start_time"], row["end_time"], row["priority"])
+            group_id = shared.get(key) or uuid4().hex
+            connection.execute(
+                text("UPDATE plans SET repeat_group_id = :group_id WHERE id = :id"),
+                {"group_id": group_id, "id": row["id"]},
+            )
+
+
 MIGRATIONS: list[tuple[int, Callable[[Engine], None]]] = [
     (1, add_missing_plan_columns),
     (2, shift_todo_created_at_to_local_time),
+    (3, assign_plan_repeat_groups),
 ]
 
 

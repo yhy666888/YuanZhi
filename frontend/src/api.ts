@@ -9,7 +9,15 @@ export type PlanType = "daily" | "monthly" | "yearly";
 export interface Plan {
   id: number; plan_type: PlanType; title: string; start_date: string; end_date: string;
   start_time: string | null; end_time: string | null; priority: Priority;
-  notes: string; progress: number; created_at: string;
+  notes: string; progress: number; repeat_group_id: string | null; created_at: string;
+}
+export type PlanScope = "one" | "series" | "following";
+export interface PlanDayStat { date: string; total: number; completed: number; }
+export interface PlanOverdueItem { id: number; title: string; start_date: string; start_time: string | null; priority: Priority; }
+export interface PlanStats {
+  today_total: number; today_completed: number;
+  week_total: number; week_completed: number; week_rate: number;
+  streak_days: number; heatmap: PlanDayStat[]; overdue: PlanOverdueItem[];
 }
 export interface Weather {
   city: string; condition: string; temperature: number | null; feels_like: number | null;
@@ -38,13 +46,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   dashboard: () => request<Dashboard>("/dashboard"),
   plans: (type?: PlanType) => request<Plan[]>(`/plans${type ? `?plan_type=${type}` : ""}`),
-  createPlan: (data: Omit<Plan, "id" | "created_at"> & { repeat_type?: "none" | "daily" | "interval" | "weekly"; repeat_interval?: number; repeat_weekdays?: number[] }) => request<Plan>("/plans", { method: "POST", body: JSON.stringify(data) }),
-  updatePlan: (id: number, data: Partial<Omit<Plan, "id" | "plan_type" | "created_at">>) => request<Plan>(`/plans/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-  deletePlan: (id: number) => request<void>(`/plans/${id}`, { method: "DELETE" }),
+  planStats: () => request<PlanStats>("/plans/stats"),
+  createPlan: (data: Omit<Plan, "id" | "created_at" | "repeat_group_id"> & { repeat_type?: "none" | "daily" | "interval" | "weekly"; repeat_interval?: number; repeat_weekdays?: number[] }) => request<Plan>("/plans", { method: "POST", body: JSON.stringify(data) }),
+  updatePlan: (id: number, data: Partial<Omit<Plan, "id" | "plan_type" | "created_at">>, scope: PlanScope = "one") => request<Plan>(`/plans/${id}?scope=${scope}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deletePlan: (id: number, scope: PlanScope = "one") => request<void>(`/plans/${id}?scope=${scope}`, { method: "DELETE" }),
   weather: (location?: string) => request<Weather>(`/weather${location ? `?location=${encodeURIComponent(location)}` : ""}`),
   trending: (platform: TrendPlatform = "all", refresh = false) => request<Trending>(`/trending?platform=${platform}${refresh ? "&refresh=true" : ""}`),
   settings: () => request<AppSettings>("/settings"),
   updateSettings: (data: AppSettings) => request<AppSettings>("/settings", { method: "PUT", body: JSON.stringify(data) }),
+  importData: (data: unknown) => request<{ todos: number; plans: number; pomodoros: number }>("/import", { method: "POST", body: JSON.stringify(data) }),
   todos: () => request<Todo[]>("/todos"),
   createTodo: (data: Pick<Todo, "title" | "priority" | "due_at" | "pomodoro_target">) => request<Todo>("/todos", { method: "POST", body: JSON.stringify(data) }),
   updateTodo: (id: number, data: Partial<Pick<Todo, "title" | "priority" | "due_at" | "completed" | "pomodoro_target">>) => request<Todo>(`/todos/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
