@@ -14,7 +14,7 @@ class Todo(Base):
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
     pomodoros: Mapped[int] = mapped_column(Integer, default=0)
     pomodoro_target: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
 class PomodoroSession(Base):

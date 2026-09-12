@@ -1,0 +1,9 @@
+{
+  "name": "远至 - 个人日程管理",
+  "short_name": "远至",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#101a2f",
+  "description": "待办、番茄钟和日程管理工具"
+}

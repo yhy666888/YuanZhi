@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from datetime import datetime
 
 from sqlalchemy import Engine, inspect, text
 
@@ -22,8 +23,24 @@ def add_missing_plan_columns(engine: Engine):
                 connection.execute(text(f"ALTER TABLE plans ADD COLUMN {name} {definition}"))
 
 
+def shift_todo_created_at_to_local_time(engine: Engine):
+    """v2 之前 Todo.created_at 以 UTC 存储，统一改为本地时间。"""
+    inspector = inspect(engine)
+    if "todos" not in inspector.get_table_names():
+        return
+    offset_seconds = int((datetime.now() - datetime.utcnow()).total_seconds())
+    if offset_seconds == 0:
+        return
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE todos SET created_at = datetime(created_at, :delta)"),
+            {"delta": f"{offset_seconds:+d} seconds"},
+        )
+
+
 MIGRATIONS: list[tuple[int, Callable[[Engine], None]]] = [
     (1, add_missing_plan_columns),
+    (2, shift_todo_created_at_to_local_time),
 ]
 
 

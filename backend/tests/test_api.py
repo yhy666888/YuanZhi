@@ -1,14 +1,17 @@
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 
 TEST_DATABASE = Path(__file__).with_name("test.db")
 os.environ["YUANZHI_DATABASE_URL"] = f"sqlite:///{TEST_DATABASE.as_posix()}"
 
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
 
 from app.database import engine
-from app import main as main_module
 from app.main import app
+from app.migrations import run_migrations
+from app.routers import trending as trending_module
 
 
 def setup_module():
@@ -84,16 +87,30 @@ def test_daily_plan_can_repeat_on_selected_weekdays():
         assert all(plan["start_date"] == plan["end_date"] for plan in plans)
 
 
+def test_todo_created_at_is_migrated_from_utc_to_local_time(tmp_path):
+    legacy_engine = create_engine(f"sqlite:///{(tmp_path / 'legacy.db').as_posix()}")
+    with legacy_engine.begin() as connection:
+        connection.execute(text("CREATE TABLE todos (id INTEGER PRIMARY KEY, created_at DATETIME)"))
+        connection.execute(text("INSERT INTO todos (created_at) VALUES ('2026-01-01 00:00:00')"))
+    run_migrations(legacy_engine)
+    with legacy_engine.begin() as connection:
+        value = connection.execute(text("SELECT created_at FROM todos")).scalar_one()
+    legacy_engine.dispose()
+    offset = int((datetime.now() - datetime.utcnow()).total_seconds())
+    expected = (datetime(2026, 1, 1) + timedelta(seconds=offset)).strftime("%Y-%m-%d %H:%M:%S")
+    assert value == expected
+
+
 def test_trending_aggregates_supported_sources(monkeypatch):
     rows = [
         {"id": str(rank), "title": f"{source}-{rank}", "url": f"https://example.com/{source}/{rank}", "source": source, "rank": rank, "heat": str(100 - rank)}
-        for rank in (1, 2) for source in main_module.HOTNEWS_PLATFORMS
+        for rank in (1, 2) for source in trending_module.HOTNEWS_PLATFORMS
     ]
-    monkeypatch.setattr(main_module, "fetch_hotnews", lambda _url, _key: rows)
-    main_module._trending_cache = None
+    monkeypatch.setattr(trending_module, "fetch_hotnews", lambda _url, _key: rows)
+    trending_module._trending_cache = None
     with TestClient(app) as client:
         combined = client.get("/api/trending?platform=all")
         assert combined.status_code == 200
-        assert len(combined.json()["items"]) == len(main_module.HOTNEWS_PLATFORMS) * 2
+        assert len(combined.json()["items"]) == len(trending_module.HOTNEWS_PLATFORMS) * 2
         weibo = client.get("/api/trending?platform=weibo")
         assert [item["title"] for item in weibo.json()["items"]] == ["weibo-1", "weibo-2"]

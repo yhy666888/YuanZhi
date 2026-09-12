@@ -22,24 +22,40 @@
 | 后端 | Python、FastAPI、SQLAlchemy 2、Pydantic 2 |
 | 数据库 | SQLite（默认） |
 | 测试 | Pytest、FastAPI TestClient、TypeScript Compiler |
+| 代码质量 | ESLint（react-hooks / react-refresh 规则）、GitHub Actions CI |
 
 ## 项目结构
 
 ```text
 yuanzhi/
 ├── frontend/                 # 当前 React 前端
-│   ├── src/                  # 页面、组件、样式和 API 客户端
+│   ├── src/
+│   │   ├── pages/            # 首页、待办、番茄钟、计划页面
+│   │   ├── components/       # 侧边栏、顶栏与各弹窗组件
+│   │   ├── api.ts            # API 客户端与类型定义
+│   │   ├── utils.ts          # 通用工具函数
+│   │   └── styles.css        # 全局样式
+│   ├── eslint.config.js      # ESLint 配置
 │   ├── package.json          # 前端依赖与脚本
 │   └── vite.config.ts        # 开发服务器与 API 代理
 ├── backend/                  # 当前 FastAPI 后端
-│   ├── app/                  # 接口、模型、Schema 和数据库迁移
+│   ├── app/
+│   │   ├── routers/          # 按资源拆分的接口层
+│   │   ├── models.py         # SQLAlchemy 模型
+│   │   ├── schemas.py        # Pydantic Schema
+│   │   ├── migrations.py     # 版本化数据库迁移
+│   │   └── main.py           # 应用入口与启动逻辑
 │   ├── tests/                # 后端自动化测试
-│   └── requirements.txt      # Python 依赖
+│   ├── requirements.txt      # 运行时依赖
+│   └── requirements-dev.txt  # 开发与测试依赖
+├── .github/workflows/        # GitHub Actions CI
+├── legacy/                   # 早期静态原型，仅作历史参考
+├── docs/                     # 一次性迁移与上传说明文档
 ├── new_home.png              # 项目预览图
 └── README.md
 ```
 
-根目录中的 `index.html`、`app.js`、`app.css`、`home.html`、`todos.html`、`pomodoro.html`、`manifest.webmanifest` 和 `service-worker.js` 属于早期静态原型，仅作历史参考，不参与当前应用的构建或部署。
+`legacy/` 目录中的 `index.html`、`app.js`、`app.css`、`home.html`、`todos.html`、`pomodoro.html`、`manifest.webmanifest` 和 `service-worker.js` 属于早期静态原型，仅作历史参考，不参与当前应用的构建或部署。
 
 ## 环境要求
 
@@ -148,13 +164,15 @@ API Key 会保存在本地数据库中，查询设置时不会返回明文，但
 
 ```powershell
 cd backend
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-前端类型检查与生产构建：
+前端类型检查、代码检查与生产构建：
 
 ```powershell
 cd frontend
+npm run lint
 npm run check
 npm run build
 ```
