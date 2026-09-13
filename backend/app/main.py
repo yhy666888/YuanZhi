@@ -1,10 +1,12 @@
+import os
 import shutil
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -12,9 +14,11 @@ from sqlalchemy.orm import Session
 from .database import Base, engine
 from .migrations import run_migrations
 from .models import Todo
-from .routers import dashboard, data, plans, pomodoros, settings, todos, trending, weather
+from .routers import dashboard, data, expenses, plan_templates, plans, pomodoros, settings, todos, trending, weather
 
 BACKUP_KEEP = 7
+# 设置 YUANZHI_API_TOKEN 后，除健康检查外的 /api 接口都要求携带 X-YuanZhi-Token 请求头（供局域网/公网访问时启用）
+API_TOKEN = os.getenv("YUANZHI_API_TOKEN", "").strip()
 
 
 def backup_database():
@@ -61,6 +65,8 @@ app.include_router(todos.router)
 app.include_router(pomodoros.router)
 app.include_router(dashboard.router)
 app.include_router(plans.router)
+app.include_router(plan_templates.router)
+app.include_router(expenses.router)
 app.include_router(weather.router)
 app.include_router(trending.router)
 app.include_router(settings.router)
@@ -70,6 +76,14 @@ app.include_router(data.router)
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+@app.middleware("http")
+async def token_guard(request: Request, call_next):
+    if API_TOKEN and request.url.path.startswith("/api") and request.url.path != "/api/health":
+        if request.headers.get("X-YuanZhi-Token") != API_TOKEN:
+            return JSONResponse(status_code=401, content={"detail": "需要访问令牌"})
+    return await call_next(request)
 
 
 # 生产模式：frontend/dist 存在时由 FastAPI 直接托管前端（应用使用 hash 路由，无需 SPA 回退）

@@ -47,12 +47,14 @@ def trending(platform: str = "all", refresh: bool = False, db: Session = Depends
         raise HTTPException(status_code=422, detail="不支持的热搜平台")
     settings = {setting.key: setting.value for setting in db.scalars(select(AppSetting)).all()}
     now = datetime.now()
+    fetch_failed = False
     if refresh or not _trending_cache or now - _trending_cache[0] > timedelta(minutes=5):
         try:
             items = fetch_hotnews(settings.get("search_api_url", "").strip() or HOTNEWS_URL, settings.get("search_api_key", "").strip())
             _trending_cache = (now, items)
         except (HTTPError, URLError, TimeoutError, UnicodeError, ValueError):
             items = _trending_cache[1] if _trending_cache else []
+            fetch_failed = True
     else:
         items = _trending_cache[1]
     if platform == "all":
@@ -68,4 +70,5 @@ def trending(platform: str = "all", refresh: bool = False, db: Session = Depends
         "heat": str(item.get("heat") or "--"), "url": str(item.get("url") or "#"),
     } for index, item in enumerate(selected, 1) if item.get("title")]
     updated_at = _trending_cache[0] if _trending_cache else now
-    return {"platform": platform, "items": result, "updated_at": updated_at.isoformat()}
+    status_value = "ok" if result else ("upstream_error" if fetch_failed else "empty")
+    return {"platform": platform, "items": result, "updated_at": updated_at.isoformat(), "status": status_value}

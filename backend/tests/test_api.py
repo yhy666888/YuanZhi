@@ -161,6 +161,8 @@ def test_plan_stats_tracks_today_week_streak_and_overdue():
         assert stats["week_total"] == week_total
         assert stats["week_completed"] == week_completed
         assert stats["week_rate"] == round(week_completed / week_total * 100)
+        assert stats["last7_total"] == 4 and stats["last7_completed"] == 2
+        assert stats["last30_total"] == 4 and stats["last30_completed"] == 2
         assert stats["heatmap"][-1]["date"] == today.isoformat()
         assert len(stats["heatmap"]) == 105
         overdue_titles = [item["title"] for item in stats["overdue"]]
@@ -268,7 +270,7 @@ def test_export_and_import_roundtrip():
         }
         imported = client.post("/api/import", json=replacement)
         assert imported.status_code == 200
-        assert imported.json() == {"todos": 1, "plans": 1, "pomodoros": 1}
+        assert imported.json() == {"todos": 1, "plans": 1, "pomodoros": 1, "expenses": 0, "plan_templates": 0}
 
         todos = client.get("/api/todos").json()
         assert [todo["title"] for todo in todos] == ["导入的待办"]
@@ -280,3 +282,185 @@ def test_export_and_import_roundtrip():
         assert dashboard["total_todos"] == 1 and dashboard["completed_todos"] == 1
         assert dashboard["pomodoros_today"] == 1
         assert client.get("/api/settings").json()["weather_city"] == "上海"
+
+
+def test_expense_crud_and_summary():
+    with TestClient(app) as client:
+        today = date.today().isoformat()
+        client.post("/api/expenses", json={"amount_cents": 2500, "category": "餐饮", "note": "午饭", "spent_at": today})
+        client.post("/api/expenses", json={"amount_cents": 1000, "category": "交通", "note": "地铁", "spent_at": today})
+        client.post("/api/expenses", json={"amount_cents": 9900, "category": "购物", "note": "衣服", "spent_at": "2026-08-01"})
+        client.post("/api/expenses", json={"amount_cents": 0, "category": "餐饮", "spent_at": today}, )
+        assert client.post("/api/expenses", json={"amount_cents": 0, "category": "餐饮", "spent_at": today}).status_code == 422
+
+        data = client.get("/api/expenses?month=2026-09").json()
+        assert len(data["items"]) == 2
+        assert data["summary"]["month_total_cents"] == 3500
+        assert data["summary"]["today_total_cents"] == 3500
+        categories = {item["category"]: item["total_cents"] for item in data["summary"]["by_category"]}
+        assert categories["餐饮"] == 2500 and categories["交通"] == 1000
+        assert data["summary"]["by_category"][0]["category"] == "餐饮"
+
+        august = client.get("/api/expenses?month=2026-08").json()
+        assert august["summary"]["month_total_cents"] == 9900
+        assert august["summary"]["today_total_cents"] == 3500
+
+        expense_id = data["items"][0]["id"]
+        assert client.delete(f"/api/expenses/{expense_id}").status_code == 204
+        assert client.get("/api/expenses?month=2026-09").json()["summary"]["count"] == 1
+
+        export = client.get("/api/export").json()
+        assert "expenses" in export and "plan_templates" in export
+
+
+def test_plan_template_save_apply_and_delete():
+    with TestClient(app) as client:
+        source_day, target_day = "2026-09-01", "2026-09-02"
+        for title, start in (("晨间阅读", "07:30"), ("编写周报", "14:00")):
+            created = client.post("/api/plans", json={
+                "plan_type": "daily", "title": title, "start_date": source_day,
+                "end_date": source_day, "start_time": start, "end_time": None,
+                "priority": "medium", "notes": "", "progress": 0,
+            })
+            assert created.status_code == 201
+
+        empty = client.post("/api/plan-templates", json={"name": "空模板", "date": "2026-09-03"})
+        assert empty.status_code == 422
+
+        saved = client.post("/api/plan-templates", json={"name": "工作日模板", "date": source_day})
+        assert saved.status_code == 201
+        template = saved.json()
+        assert template["name"] == "工作日模板"
+        assert [item["title"] for item in template["items"]] == ["晨间阅读", "编写周报"]
+        template_id = template["id"]
+
+        applied = client.post(f"/api/plan-templates/{template_id}/apply", json={"date": target_day})
+        assert applied.status_code == 200
+        assert applied.json() == {"created": 2, "date": target_day, "total": 2}
+        again = client.post(f"/api/plan-templates/{template_id}/apply", json={"date": target_day})
+        assert again.json()["created"] == 0
+        titles = [plan["title"] for plan in client.get("/api/plans?plan_type=daily").json() if plan["start_date"] == target_day]
+        assert titles == ["晨间阅读", "编写周报"]
+
+        missing = client.post("/api/plan-templates/999/apply", json={"date": target_day})
+        assert missing.status_code == 404
+
+        templates = client.get("/api/plan-templates").json()
+        assert len(templates) == 1 and templates[0]["id"] == template_id
+        assert client.delete(f"/api/plan-templates/{template_id}").status_code == 204
+        assert client.get("/api/plan-templates").json() == []
+
+
+def test_plan_checkins_month_window_and_future_guard():
+    with TestClient(app) as client:
+        client.post("/api/plans", json={
+            "plan_type": "daily", "title": "月内计划", "start_date": "2026-09-05",
+            "end_date": "2026-09-05", "start_time": "09:00", "priority": "medium",
+            "notes": "", "progress": 0,
+        })
+        data = client.get("/api/plans/checkins?month=2026-09").json()
+        assert data["period"] == "2026-09"
+        assert len(data["days"]) == 30
+        target = next(day for day in data["days"] if day["date"] == "2026-09-05")
+        assert target == {"date": "2026-09-05", "total": 1, "completed": 0}
+        assert client.get("/api/plans/checkins?month=2026-13").status_code == 422
+        assert client.get("/api/plans/checkins?month=2099-01").status_code == 422
+        current = client.get("/api/plans/checkins").json()
+        assert current["period"] == date.today().strftime("%Y-%m")
+        year_data = client.get("/api/plans/checkins?year=2026").json()
+        assert year_data["period"] == "2026"
+        assert len(year_data["days"]) == 365
+        assert client.get("/api/plans/checkins?year=2099").status_code == 422
+
+
+def test_pomodoro_records_list_update_and_delete():
+    from app.database import SessionLocal
+    from app.models import PomodoroSession as PomodoroModel
+
+    with SessionLocal() as db:
+        db.query(PomodoroModel).delete()
+        db.commit()
+    with TestClient(app) as client:
+        assert client.post("/api/pomodoros", json={"todo_id": None, "duration_seconds": 1500}).status_code == 200
+        listed = client.get("/api/pomodoros?days=7").json()
+        assert len(listed) == 1
+        session_id = listed[0]["id"]
+        updated = client.patch(f"/api/pomodoros/{session_id}", json={"duration_seconds": 600, "completed_at": "2026-09-13T10:00:00"})
+        assert updated.status_code == 200
+        assert updated.json()["duration_seconds"] == 600
+        assert client.patch("/api/pomodoros/999999", json={"duration_seconds": 600}).status_code == 404
+        assert client.delete(f"/api/pomodoros/{session_id}").status_code == 204
+        assert client.get("/api/pomodoros?days=7").json() == []
+
+
+def test_api_token_guard(monkeypatch):
+    from app import main as main_module
+
+    monkeypatch.setattr(main_module, "API_TOKEN", "secret")
+    with TestClient(app) as client:
+        assert client.get("/api/todos").status_code == 401
+        assert client.get("/api/health").status_code == 200
+        assert client.get("/api/todos", headers={"X-YuanZhi-Token": "secret"}).status_code == 200
+        assert client.get("/api/todos", headers={"X-YuanZhi-Token": "wrong"}).status_code == 401
+
+
+def test_expense_income_edit_savings_and_debt():
+    from app.database import Base, SessionLocal, engine
+    from app.models import Expense as ExpenseModel
+
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        db.query(ExpenseModel).delete()
+        db.commit()
+    with TestClient(app) as client:
+        today = date.today().isoformat()
+        month = today[:7]
+        client.post("/api/expenses", json={"kind": "income", "amount_cents": 1000000, "category": "工资", "method": "银行卡", "note": "月薪", "spent_at": today})
+        client.post("/api/expenses", json={"amount_cents": 3000, "category": "购物", "method": "信用卡", "note": "衣服", "spent_at": today})
+        client.post("/api/expenses", json={"amount_cents": 2500, "category": "餐饮", "method": "微信", "note": "午饭", "spent_at": today})
+
+        data = client.get(f"/api/expenses?month={month}").json()
+        summary = data["summary"]
+        # 信用卡消费计入本月支出，同时累计为负债
+        assert summary["month_total_cents"] == 5500
+        assert summary["month_income_cents"] == 1000000
+        assert summary["savings_cents"] == 1000000 - 2500
+        assert summary["debt_cents"] == 3000
+        assert summary["today_total_cents"] == 5500
+
+        target = next(item for item in data["items"] if item["note"] == "午饭")
+        edited = client.patch(f"/api/expenses/{target['id']}", json={"amount_cents": 2000, "method": "支付宝"})
+        assert edited.status_code == 200
+        assert edited.json()["method"] == "支付宝"
+        data2 = client.get(f"/api/expenses?month={month}").json()
+        assert data2["summary"]["month_total_cents"] == 5000
+        assert data2["summary"]["savings_cents"] == 1000000 - 2000
+
+        client.post("/api/expenses", json={"kind": "income", "amount_cents": 1500, "category": "其他", "method": "信用卡", "note": "还卡", "spent_at": today})
+        final = client.get(f"/api/expenses?month={month}").json()
+        assert final["summary"]["debt_cents"] == 1500
+
+
+def test_expense_spent_at_keeps_hour_and_minute():
+    from app.database import SessionLocal
+    from app.models import Expense as ExpenseModel
+
+    with SessionLocal() as db:
+        db.query(ExpenseModel).delete()
+        db.commit()
+    with TestClient(app) as client:
+        today = date.today().isoformat()
+        created = client.post("/api/expenses", json={
+            "kind": "expense", "amount_cents": 1800, "category": "餐饮",
+            "method": "微信", "note": "晚餐", "spent_at": f"{today}T19:30",
+        })
+        assert created.status_code == 201
+        assert created.json()["spent_at"].startswith(f"{today}T19:30")
+        listed = client.get(f"/api/expenses?month={today[:7]}").json()
+        assert listed["items"][0]["spent_at"].startswith(f"{today}T19:30")
+        # 历史仅含日期的记录（导入场景）也能被解析
+        legacy = client.post("/api/expenses", json={
+            "kind": "expense", "amount_cents": 500, "category": "交通",
+            "method": "现金", "note": "", "spent_at": "2026-08-01",
+        })
+        assert legacy.status_code == 201

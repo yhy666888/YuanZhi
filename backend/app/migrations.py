@@ -66,10 +66,41 @@ def assign_plan_repeat_groups(engine: Engine):
             )
 
 
+def add_expense_kind_and_method(engine: Engine):
+    """v4 记账引入收入/支出类型与支付方式，历史记录默认为支出、微信。"""
+    inspector = inspect(engine)
+    if "expenses" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("expenses")}
+    with engine.begin() as connection:
+        if "kind" not in columns:
+            connection.execute(text("ALTER TABLE expenses ADD COLUMN kind VARCHAR(10) NOT NULL DEFAULT 'expense'"))
+        if "method" not in columns:
+            connection.execute(text("ALTER TABLE expenses ADD COLUMN method VARCHAR(20) NOT NULL DEFAULT '微信'"))
+
+
+def expense_spent_at_to_datetime(engine: Engine):
+    """v5 记账时间细化到时分：历史仅含日期的记录统一补为当天 12:00。"""
+    inspector = inspect(engine)
+    if "expenses" not in inspector.get_table_names():
+        return
+    with engine.begin() as connection:
+        rows = connection.execute(text("SELECT id, spent_at FROM expenses")).mappings().fetchall()
+        for row in rows:
+            value = str(row["spent_at"])
+            if " " not in value:
+                connection.execute(
+                    text("UPDATE expenses SET spent_at = :value WHERE id = :id"),
+                    {"value": f"{value} 12:00:00.000000", "id": row["id"]},
+                )
+
+
 MIGRATIONS: list[tuple[int, Callable[[Engine], None]]] = [
     (1, add_missing_plan_columns),
     (2, shift_todo_created_at_to_local_time),
     (3, assign_plan_repeat_groups),
+    (4, add_expense_kind_and_method),
+    (5, expense_spent_at_to_datetime),
 ]
 
 

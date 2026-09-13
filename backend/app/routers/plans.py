@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Plan
 from ..schemas import (
+    PlanCheckins,
     PlanCreate,
     PlanDayStat,
     PlanOverdueItem,
@@ -67,6 +68,16 @@ def plan_stats(db: Session = Depends(get_db)):
         week_total += total
         week_completed += completed
 
+    # 近 7 天 / 近 30 天（含今天）完成情况，供首页概览展示
+    last7_total = last7_completed = last30_total = last30_completed = 0
+    for offset in range(30):
+        total, completed = day_stat(today - timedelta(days=offset))
+        if offset < 7:
+            last7_total += total
+            last7_completed += completed
+        last30_total += total
+        last30_completed += completed
+
     # 连续全勤：从今天往回数“全部完成”的天数；没有计划的日子不断档；今天未完成不影响已保持的纪录
     streak_days = 0
     day = today
@@ -97,6 +108,10 @@ def plan_stats(db: Session = Depends(get_db)):
         week_total=week_total,
         week_completed=week_completed,
         week_rate=round(week_completed / week_total * 100) if week_total else 0,
+        last7_total=last7_total,
+        last7_completed=last7_completed,
+        last30_total=last30_total,
+        last30_completed=last30_completed,
         streak_days=streak_days,
         heatmap=heatmap,
         overdue=[
@@ -110,6 +125,52 @@ def plan_stats(db: Session = Depends(get_db)):
             for plan in overdue_rows
         ],
     )
+
+
+@router.get("/plans/checkins", response_model=PlanCheckins)
+def plan_checkins(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    year: int | None = Query(default=None, ge=2000, le=2999),
+    db: Session = Depends(get_db),
+):
+    """按月或按年返回每日计划打卡情况；不传参数时为当月，不能查看未来期间。"""
+    today = date.today()
+    if year:
+        if year > today.year:
+            raise HTTPException(status_code=422, detail="不能查看未来年份的打卡")
+        period_start = date(year, 1, 1)
+        period_end = date(year, 12, 31)
+        period_key = str(year)
+    elif month:
+        year_num, mon = (int(part) for part in month.split("-"))
+        if (year_num, mon) > (today.year, today.month):
+            raise HTTPException(status_code=422, detail="不能查看未来月份的打卡")
+        period_start = date(year_num, mon, 1)
+        next_month = date(year_num + 1, 1, 1) if mon == 12 else date(year_num, mon + 1, 1)
+        period_end = next_month - timedelta(days=1)
+        period_key = f"{year_num:04d}-{mon:02d}"
+    else:
+        period_start = date(today.year, today.month, 1)
+        next_month = date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1)
+        period_end = next_month - timedelta(days=1)
+        period_key = f"{today.year:04d}-{today.month:02d}"
+    rows = db.scalars(
+        select(Plan).where(
+            Plan.plan_type == "daily",
+            Plan.start_date >= period_start,
+            Plan.start_date <= period_end,
+        )
+    ).all()
+    by_date: dict[date, list[Plan]] = {}
+    for plan in rows:
+        by_date.setdefault(plan.start_date, []).append(plan)
+    days_total = (period_end - period_start).days + 1
+    days = []
+    for offset in range(days_total):
+        day = period_start + timedelta(days=offset)
+        entries = by_date.get(day, [])
+        days.append(PlanDayStat(date=day, total=len(entries), completed=sum(1 for entry in entries if entry.progress >= 100)))
+    return PlanCheckins(period=period_key, days=days)
 
 
 @router.post("/plans", response_model=PlanRead, status_code=status.HTTP_201_CREATED)

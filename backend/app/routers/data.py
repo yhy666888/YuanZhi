@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import AppSetting, Plan, PomodoroSession, Todo
+from ..models import AppSetting, Expense, Plan, PlanTemplate, PlanTemplateItem, PomodoroSession, Todo
 from ..schemas import DataImport
 from .settings import SETTING_KEYS
 
@@ -50,6 +50,30 @@ def export_data(db: Session = Depends(get_db)):
             }
             for session in db.scalars(select(PomodoroSession)).all()
         ],
+        "expenses": [
+            {
+                "id": expense.id, "kind": expense.kind, "amount_cents": expense.amount_cents,
+                "category": expense.category, "method": expense.method,
+                "note": expense.note, "spent_at": expense.spent_at, "created_at": expense.created_at,
+            }
+            for expense in db.scalars(select(Expense)).all()
+        ],
+        "plan_templates": [
+            {
+                "id": template.id, "name": template.name, "created_at": template.created_at,
+                "items": [
+                    {
+                        "id": item.id, "title": item.title, "start_time": item.start_time,
+                        "end_time": item.end_time, "priority": item.priority,
+                        "notes": item.notes, "sort_order": item.sort_order,
+                    }
+                    for item in db.scalars(
+                        select(PlanTemplateItem).where(PlanTemplateItem.template_id == template.id)
+                    ).all()
+                ],
+            }
+            for template in db.scalars(select(PlanTemplate)).all()
+        ],
         "settings": {key: settings.get(key, "") for key in SETTING_KEYS},
     }
     return JSONResponse(
@@ -60,9 +84,9 @@ def export_data(db: Session = Depends(get_db)):
 
 @router.post("/import")
 def import_data(payload: DataImport, db: Session = Depends(get_db)):
-    """用备份文件整体替换当前数据（待办、计划、专注记录与设置）。"""
+    """用备份文件整体替换当前数据（待办、计划、专注记录、模板、记账与设置）。"""
     now = datetime.now()
-    for model in (Todo, Plan, PomodoroSession):
+    for model in (PlanTemplateItem, PlanTemplate, Expense, Todo, Plan, PomodoroSession):
         db.query(model).delete()
     db.add_all([
         Todo(
@@ -90,6 +114,23 @@ def import_data(payload: DataImport, db: Session = Depends(get_db)):
         )
         for item in payload.pomodoros
     ])
+    db.add_all([
+        Expense(
+            id=item.id, kind=item.kind, amount_cents=item.amount_cents, category=item.category,
+            method=item.method, note=item.note, spent_at=item.spent_at, created_at=item.created_at or now,
+        )
+        for item in payload.expenses
+    ])
+    for template in payload.plan_templates:
+        db.add(PlanTemplate(id=template.id, name=template.name, created_at=template.created_at or now))
+        db.add_all([
+            PlanTemplateItem(
+                id=item.id, template_id=template.id, title=item.title,
+                start_time=item.start_time, end_time=item.end_time,
+                priority=item.priority, notes=item.notes, sort_order=item.sort_order,
+            )
+            for item in template.items
+        ])
     for key in SETTING_KEYS:
         if key in payload.settings:
             setting = db.get(AppSetting, key)
@@ -102,4 +143,6 @@ def import_data(payload: DataImport, db: Session = Depends(get_db)):
         "todos": len(payload.todos),
         "plans": len(payload.plans),
         "pomodoros": len(payload.pomodoros),
+        "expenses": len(payload.expenses),
+        "plan_templates": len(payload.plan_templates),
     }

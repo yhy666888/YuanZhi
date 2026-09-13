@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { ChevronRight, FileText, Gauge } from "lucide-react";
 import type { Todo } from "../api";
 
-export function Stat({ icon, label, value, detail, tone }: { icon: ReactNode; label: string; value: ReactNode; detail: string; tone: string }) {
-  return <div className="panel stat-card"><div className={`stat-icon ${tone}`}>{icon}</div><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div></div>;
+export function Stat({ icon, label, value, detail, tone, onClick }: { icon: ReactNode; label: string; value: ReactNode; detail: string; tone: string; onClick?: () => void }) {
+  return <div className="panel stat-card" style={onClick ? { cursor: "pointer" } : undefined} onClick={onClick}><div className={`stat-icon ${tone}`}>{icon}</div><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div></div>;
 }
 
 export function PanelTitle({ title, action, onAction }: { title: string; action: string; onAction: () => void }) {

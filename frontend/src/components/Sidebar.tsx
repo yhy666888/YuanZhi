@@ -1,10 +1,10 @@
-import { CalendarDays, CheckSquare2, Focus, Sparkles, TimerReset } from "lucide-react";
+import { CalendarDays, CheckSquare2, Focus, Sparkles, TimerReset, Wallet } from "lucide-react";
 import type { Dashboard } from "../api";
 import type { Page } from "../utils";
 
 export function Sidebar({ page, go, open, dashboard }: { page: Page; go: (p: Page) => void; open: boolean; dashboard: Dashboard | null }) {
   const nav = [
-    ["home", Focus, "首页"], ["pomodoro", TimerReset, "番茄钟"], ["todos", CheckSquare2, "待办事项"], ["plan", CalendarDays, "计划"]
+    ["home", Focus, "首页"], ["pomodoro", TimerReset, "番茄钟"], ["todos", CheckSquare2, "待办事项"], ["plan", CalendarDays, "计划"], ["money", Wallet, "记账"]
   ] as const;
   const focus = dashboard?.focus_minutes_today ?? 0;
   return <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
